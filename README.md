@@ -26,4 +26,4 @@ Main scripts:
 
 Issues
 
-See #1 for browser context problems in storybook COmponent Tests
+See [#1](https://github.com/SteveALee/input-devices/issues/1) for browser context problems in Storybook Component Tests
