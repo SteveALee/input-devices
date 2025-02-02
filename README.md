@@ -2,6 +2,8 @@
 
 A small Svelte component to select an input audio device from those connected. Uses Storybook for Component Tests.
 
+This component is a little unusual as its state is not fully defined by its props but rather by the browser media Devices API.
+
 Uses browser:
 
 - MediaDevices
