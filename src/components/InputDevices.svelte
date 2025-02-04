@@ -1,5 +1,6 @@
 <script lang="ts">
   import { settings } from '@lib/persistentStore.js'
+  import { compileModule } from 'svelte/compiler'
 
   interface Props {
     ondeviceid: (deviceId: string) => void
@@ -10,12 +11,17 @@
   let devicesPromise = $state.raw(getInputDevices())
 
   $effect(() => {
-    devicesPromise.then((devices) => {
-      if (!devices.find((d) => d.deviceId === deviceId)) {
-        deviceId = 'unknown'
-      }
-      ondeviceid(deviceId) // passed up, not stored in settings
-    })
+    deviceId // ensure it's tracked
+    devicesPromise
+      .then((devices) => {
+        if (!devices.find((d) => d.deviceId === deviceId)) {
+          deviceId = 'unknown'
+        }
+        return deviceId
+      })
+      .then((devId) => {
+        ondeviceid(devId) // passed up, not stored in settings
+      })
   })
 
   $effect(() => {
@@ -54,7 +60,7 @@
 
 {#await devicesPromise then devices}
   {#if devices.length == 0}
-    <p>No input devices found</p>
+    <div>No input devices found</div>
   {:else}
     <label
       >Input: <select disabled={devices.length == 1 && deviceId != 'unknown'} bind:value={deviceId}>

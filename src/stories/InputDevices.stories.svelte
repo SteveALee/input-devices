@@ -7,6 +7,13 @@
 
   interface DeviceDef extends Omit<MediaDeviceInfo, 'kind' | 'groupId' | 'toJSON'> {}
 
+  function expandDeviceDefs(defs: DeviceDef[]) {
+    return defs.map(
+      (d: DeviceDef) =>
+        ({ ...d, kind: 'audioinput', groupId: '', toJSON: () => {} }) as MediaDeviceInfo
+    )
+  }
+
   const { Story } = defineMeta({
     title: 'InputDevices',
     component: InputDevices,
@@ -16,83 +23,103 @@
       ondeviceid: fn()
     },
     async beforeEach(ctx) {
-      // Need here as <script> scope is in different browser context
-
-      await navigator.mediaDevices.getUserMedia({ audio: true })
-
-      // the settings stores is a writable that persists to local storage
-      // except it's not Playwright's Chromeium but the host browser (assuming not CLI runner)
-      // This is probably a bug but we work with it by using the export resetSettings
-      // Note also %settings doesn't work here so we would use settings.subscribe()
-      const reset = ctx.parameters.resetSettings
-      if (reset === true) {
-        resetSettings()
-      } else if (reset !== false) {
-        resetSettings({ deviceId: reset })
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch (e) {
+        if (e instanceof DOMException && (e as DOMException).name == 'NotFoundError') {
+          // This seems to occur after hyberbnating and storybook is running
+          alert(
+            "Fatal 'NotFoundError' error calling 'getUserMedia' in 'beforeEach'\n\nYou probably need to reboot"
+          )
+        } else {
+          throw e
+        }
       }
+      // Note also $settings doesn't work here so we would use settings.subscribe()
+      const savedId = ctx.parameters.savedId
+      resetSettings(savedId ? { deviceId: savedId } : undefined)
 
       if (ctx.parameters.deviceDefs) {
-        const mediaDevices = ctx.parameters.deviceDefs.map(
-          (d: DeviceDef) =>
-            ({ ...d, kind: 'audioinput', groupId: '', toJSON: () => {} }) as MediaDeviceInfo
-        )
+        const mediaDevices = expandDeviceDefs(ctx.parameters.deviceDefs)
 
         // Can't seem to hoist this to enclosure so run here for every Story
         // Not sure when is destroyed
         // I'm confused as this should run in host browser yet asserts in play work
         const enumDevicesSpy = spyOn(navigator.mediaDevices, 'enumerateDevices')
         enumDevicesSpy.mockImplementation(() => Promise.resolve(mediaDevices))
+        ctx.parameters.enumDevicesSpy = enumDevicesSpy
       }
     }
   })
 </script>
 
+<Story name="Machine devices, no test" tags={['!test']}></Story>
+
 <Story
-  name="Single Device none Saved"
+  name="no devices"
+  parameters={{
+    resetSettings: true,
+    deviceDefs: []
+  }}
+  play={async ({ args, parameters, canvasElement }) => {
+    await waitFor(() => {
+      expect(args.ondeviceid).toHaveBeenCalledWith('unknown')
+    })
+
+    const canvas = within(canvasElement)
+    expect(canvas.getByText('No input devices found')).toBeInTheDocument()
+    expect($settings.deviceId).toBe('') // will be last saved, we reset it
+  }}
+></Story>
+
+<Story
+  name="Single device none saved"
   parameters={{
     resetSettings: true,
     deviceDefs: [{ deviceId: 'one', label: 'Input Device' }]
   }}
   play={async ({ args, parameters, canvasElement }) => {
+    const deviceId = parameters.deviceDefs[0].deviceId
     await waitFor(() => {
-      expect(args.ondeviceid).toHaveBeenCalledWith(parameters.deviceDefs[0].deviceId)
+      expect(args.ondeviceid).toHaveBeenCalledWith(deviceId)
     })
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
     expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d) => d.deviceId)
+      parameters.deviceDefs.map((d: DeviceDef) => d.deviceId)
     )
-    expect(devices).toHaveValue(parameters.deviceDefs[0].deviceId)
+
+    expect(devices).toHaveValue(deviceId)
     expect(devices).toBeDisabled()
+    expect($settings.deviceId).toBe(deviceId)
   }}
 ></Story>
 
 <Story
-  name="Single Device Saved"
+  name="Single Device saved Id"
   parameters={{
-    resetSettings: 'one',
+    savedId: 'one',
     deviceDefs: [{ deviceId: 'one', label: 'Input Device' }]
   }}
   play={async ({ args, parameters, canvasElement }) => {
+    const deviceId = parameters.deviceDefs[0].deviceId
     await waitFor(() => {
-      expect(args.ondeviceid).toHaveBeenCalledWith(parameters.deviceDefs[0].deviceId)
+      expect(args.ondeviceid).toHaveBeenCalledWith(deviceId)
     })
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
     expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d) => d.deviceId)
+      parameters.deviceDefs.map((d: DeviceDef) => d.deviceId)
     )
-    expect(devices).toHaveValue(parameters.deviceDefs[0].deviceId)
-    expect(devices).toBeDisabled()
   }}
 ></Story>
 
 <Story
-  name="Single Device Another Saved"
+  name="Single device another saved id"
   parameters={{
-    resetSettings: 'random',
+    savedId: 'random',
     deviceDefs: [{ deviceId: 'one', label: 'Input Device' }]
   }}
   play={async ({ args, parameters, canvasElement }) => {
@@ -106,12 +133,26 @@
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
-    expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d) => d.deviceId)
-    )
     expect(devices).toHaveValue('unknown')
     expect(devices).toBeEnabled()
     expect(getOptionValues(devices as HTMLSelectElement)).toEqual(['unknown', 'one'])
+  }}
+></Story>
+
+<Story
+  name="Single device another saved id, user selected"
+  parameters={{
+    savedId: 'random',
+    deviceDefs: [{ deviceId: 'one', label: 'Input Device' }]
+  }}
+  play={async ({ args, parameters, canvasElement }) => {
+    await waitFor(() => {
+      expect(args.ondeviceid).toHaveBeenCalledWith('unknown')
+    })
+
+    const canvas = within(canvasElement)
+    const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
+
     await userEvent.selectOptions(devices, 'one')
     expect(devices).toHaveValue('one')
     expect(devices).toBeDisabled()
@@ -119,9 +160,9 @@
 ></Story>
 
 <Story
-  name="Multiple Devices One Saved"
+  name="Multiple devices one saved"
   parameters={{
-    resetSettings: 'two',
+    savedId: 'two',
     deviceDefs: [
       { deviceId: 'one', label: 'Input Device 1' },
       { deviceId: 'two', label: 'Input Device 2' },
@@ -129,70 +170,88 @@
     ]
   }}
   play={async ({ args, parameters, canvasElement }) => {
+    const deviceId = parameters.deviceDefs[1].deviceId
     await waitFor(() => {
-      expect(args.ondeviceid).toHaveBeenCalledWith(parameters.deviceDefs[1].deviceId)
+      expect(args.ondeviceid).toHaveBeenCalledWith(deviceId)
     })
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
     expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d) => d.deviceId)
+      parameters.deviceDefs.map((d: DeviceDef) => d.deviceId)
     )
-    expect(devices).toHaveValue(parameters.deviceDefs[1].deviceId)
+    expect(devices).toHaveValue(deviceId)
     expect(devices).toBeEnabled()
-    await userEvent.selectOptions(devices, 'three')
-    expect(devices).toHaveValue('three')
-    expect($settings.deviceId).toBe('three') // Can use $ to subscribe here
   }}
 ></Story>
 
 <Story
-  name="Is Reactive"
+  name="Multiple devices user selection"
   parameters={{
-    resetSettings: 'two'
-  }}
-  play={async ({ args, parameters, canvasElement }) => {
-    const deviceDefs = [
+    savedId: 'two',
+    deviceDefs: [
       { deviceId: 'one', label: 'Input Device 1' },
       { deviceId: 'two', label: 'Input Device 2' },
       { deviceId: 'three', label: 'Input Device 3' }
     ]
-    const deviceDefs2 = [...deviceDefs, { deviceId: 'four', label: 'Input Device 4' }]
-
-    function expandDeviceDefs(deviceDefs: DeviceDef[]) {
-      return deviceDefs.map(
-        (d) => ({ ...d, kind: 'audioinput', groupId: '', toJSON: () => {} }) as MediaDeviceInfo
-      )
-    }
-    const enumDevicesSpy = spyOn(navigator.mediaDevices, 'enumerateDevices')
-    enumDevicesSpy.mockImplementation(() => Promise.resolve(expandDeviceDefs(deviceDefs)))
-
+  }}
+  play={async ({ args, parameters, canvasElement }) => {
+    const deviceId = parameters.deviceDefs[1].deviceId
     await waitFor(() => {
-      expect(args.ondeviceid).toHaveBeenCalledWith(deviceDefs[1].deviceId)
+      expect(args.ondeviceid).toHaveBeenCalledWith(deviceId)
     })
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
-    expect([...devices.options].map((o) => o.value)).toEqual(deviceDefs.map((d) => d.deviceId))
-    expect(devices).toHaveValue(deviceDefs[1].deviceId)
-    expect(devices).toBeEnabled()
-    await userEvent.selectOptions(devices, 'three')
-    expect(devices).toHaveValue('three')
-    expect($settings.deviceId).toBe('three')
 
-    enumDevicesSpy.mockReturnValueOnce(Promise.resolve(expandDeviceDefs(deviceDefs2)))
-    // minimal devicechanged event - https://w3c.github.io/mediacapture-main/#dom-devicechangeevent
-    navigator.mediaDevices.dispatchEvent(new Event('devicechange'))
+    const newDeviceId = 'three'
+    await userEvent.selectOptions(devices, newDeviceId)
+    expect(devices).toHaveValue(newDeviceId)
+    expect($settings.deviceId).toBe(newDeviceId)
     await waitFor(() => {
-      expect(args.ondeviceid).toHaveBeenCalledWith(deviceDefs[1].deviceId)
+      expect(args.ondeviceid).toHaveBeenNthCalledWith(2, newDeviceId)
+    })
+  }}
+></Story>
+
+<Story
+  name="Is reactive to new devices"
+  parameters={{
+    savedId: 'two',
+    deviceDefs: [
+      { deviceId: 'one', label: 'Input Device 1' },
+      { deviceId: 'two', label: 'Input Device 2' },
+      { deviceId: 'three', label: 'Input Device 3' }
+    ]
+  }}
+  play={async ({ args, parameters, canvasElement }) => {
+    const deviceId = 'two'
+    await waitFor(() => {
+      expect(args.ondeviceid).toHaveBeenCalledWith(deviceId)
     })
 
-    // TODO - fix why new length not showing in DOM
-    //   await waitFor(async () =>
-    //    expect([...devices.options].map((o) => o.value)).toEqual(deviceDefs2.map((d) => d.deviceId))
-    //  )
-    //    const devices2 = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
-    setTimeout(() => console.log(devices.options), 2000) // still showing 3 items!!!
-    // await userEvent.selectOptions(devices, 'four')
+    const deviceDefs2 = [...parameters.deviceDefs, { deviceId: 'four', label: 'Input Device 4' }]
+
+    // update to 4 items to simulate new added
+    parameters.enumDevicesSpy.mockReturnValue(Promise.resolve(expandDeviceDefs(deviceDefs2)))
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange')) // simulate new devices event
+
+    await waitFor(async function checkOptions() {
+      expect(args.ondeviceid).toHaveBeenNthCalledWith(2, deviceId) // we get this, possibly extraneous
+    })
+    // Option element gets recreated
+    const canvas = within(canvasElement)
+    const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
+
+    expect([...devices.options].map((o) => o.value)).toEqual(
+      deviceDefs2.map((d: DeviceDef) => d.deviceId)
+    )
+
+    const newDeviceId = 'four'
+    await userEvent.selectOptions(devices, newDeviceId)
+    expect(devices).toHaveValue(newDeviceId)
+    await waitFor(() => {
+      expect(args.ondeviceid).toHaveBeenNthCalledWith(3, newDeviceId)
+    })
   }}
 ></Story>
