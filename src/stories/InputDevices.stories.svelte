@@ -62,6 +62,7 @@
     deviceDefs: []
   }}
   play={async ({ args, parameters, canvasElement }) => {
+    // We wait as Option is rendered asynchronously
     await waitFor(() => {
       expect(args.ondeviceid).toHaveBeenCalledWith('unknown')
     })
@@ -153,8 +154,12 @@
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
 
-    await userEvent.selectOptions(devices, 'one')
-    expect(devices).toHaveValue('one')
+    const newDeviceId = 'one'
+    await userEvent.selectOptions(
+      devices,
+      parameters.deviceDefs.find((d: DeviceDef) => d.deviceId === newDeviceId).label
+    )
+    expect(devices).toHaveValue(newDeviceId)
     expect(devices).toBeDisabled()
   }}
 ></Story>
@@ -205,7 +210,11 @@
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
 
     const newDeviceId = 'three'
-    await userEvent.selectOptions(devices, newDeviceId)
+
+    await userEvent.selectOptions(
+      devices,
+      parameters.deviceDefs.find((d: DeviceDef) => d.deviceId === newDeviceId).label
+    )
     expect(devices).toHaveValue(newDeviceId)
     expect($settings.deviceId).toBe(newDeviceId)
     await waitFor(() => {
@@ -248,7 +257,10 @@
     )
 
     const newDeviceId = 'four'
-    await userEvent.selectOptions(devices, newDeviceId)
+    await userEvent.selectOptions(
+      devices,
+      parameters.deviceDefs.find((d: DeviceDef) => d.deviceId === newDeviceId).label
+    )
     expect(devices).toHaveValue(newDeviceId)
     await waitFor(() => {
       expect(args.ondeviceid).toHaveBeenNthCalledWith(3, newDeviceId)
