@@ -4,6 +4,8 @@ A small Svelte component to select an input audio device from those connected. U
 
 This component is a little unusual as its state is not fully defined by its props but rather by the browser MediaDevices API and localStorage.
 
+It's a real component but also used to "Kick the tyres" of storybooks new COmponent Tests and addon-svelte-csf. Result is storybook is very useful. Several bugs surfaced in writing the tests.
+
 Uses browser:
 
 - MediaDevices
@@ -24,6 +26,6 @@ Main scripts:
 - npm run dev
 - npm run storybook
 
-Issues
+Misc:
 
-See [#1](https://github.com/SteveALee/input-devices/issues/1) for browser context problems in Storybook Component Tests
+[Issues](https://github.com/SteveALee/input-devices/issues)
