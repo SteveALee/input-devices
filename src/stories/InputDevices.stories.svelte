@@ -35,6 +35,7 @@
           throw e
         }
       }
+      console.log('beforeEach')
       // Note also $settings doesn't work here so we would use settings.subscribe()
       const savedId = ctx.parameters.savedId
       resetSettings(savedId ? { deviceId: savedId } : undefined)
@@ -259,7 +260,7 @@
     const newDeviceId = 'four'
     await userEvent.selectOptions(
       devices,
-      parameters.deviceDefs.find((d: DeviceDef) => d.deviceId === newDeviceId).label
+      deviceDefs2.find((d: DeviceDef) => d.deviceId === newDeviceId).label
     )
     expect(devices).toHaveValue(newDeviceId)
     await waitFor(() => {
