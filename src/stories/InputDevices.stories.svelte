@@ -7,11 +7,23 @@
 
   interface DeviceDef extends Omit<MediaDeviceInfo, 'kind' | 'groupId' | 'toJSON'> {}
 
-  function expandDeviceDefs(defs: DeviceDef[]) {
-    return defs.map(
+  function expandDeviceDefs(deviceDefs: DeviceDef[]) {
+    return deviceDefs.map(
       (d: DeviceDef) =>
         ({ ...d, kind: 'audioinput', groupId: '', toJSON: () => {} }) as MediaDeviceInfo
     )
+  }
+
+  function deviceDefLabel(deviceDefs: DeviceDef[], id: string) {
+    return deviceDefs.find((d) => d.deviceId === id)?.label ?? ''
+  }
+
+  function getSelectValues(selectEl: HTMLSelectElement) {
+    return [...selectEl.options].map((o) => o.value)
+  }
+
+  function expectSelectOptions(devices: HTMLSelectElement, deviceDefs: DeviceDef[]) {
+    expect([...getSelectValues(devices)]).toEqual(deviceDefs.map((d) => d.deviceId))
   }
 
   const { Story } = defineMeta({
@@ -23,29 +35,18 @@
       ondeviceid: fn()
     },
     async beforeEach(ctx) {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true })
-      } catch (e) {
-        if (e instanceof DOMException && (e as DOMException).name == 'NotFoundError') {
-          // This seems to occur after hyberbnating and storybook is running
-          alert(
-            "Fatal 'NotFoundError' error calling 'getUserMedia' in 'beforeEach'\n\nYou probably need to reboot"
-          )
-        } else {
-          throw e
-        }
-      }
-      console.log('beforeEach')
       // Note also $settings doesn't work here so we would use settings.subscribe()
       const savedId = ctx.parameters.savedId
       resetSettings(savedId ? { deviceId: savedId } : undefined)
 
+      // spys need to be run in this function to work
+      // vitest will destroy
+      spyOn(navigator.mediaDevices, 'getUserMedia').mockReturnValue(
+        Promise.resolve({} as MediaStream)
+      )
+
       if (ctx.parameters.deviceDefs) {
         const mediaDevices = expandDeviceDefs(ctx.parameters.deviceDefs)
-
-        // Can't seem to hoist this to enclosure so run here for every Story
-        // Not sure when is destroyed
-        // I'm confused as this should run in host browser yet asserts in play work
         const enumDevicesSpy = spyOn(navigator.mediaDevices, 'enumerateDevices')
         enumDevicesSpy.mockImplementation(() => Promise.resolve(mediaDevices))
         ctx.parameters.enumDevicesSpy = enumDevicesSpy
@@ -53,8 +54,6 @@
     }
   })
 </script>
-
-<Story name="Machine devices, no test" tags={['!test']}></Story>
 
 <Story
   name="no devices"
@@ -70,7 +69,7 @@
 
     const canvas = within(canvasElement)
     expect(canvas.getByText('No input devices found')).toBeInTheDocument()
-    expect($settings.deviceId).toBe('') // will be last saved, we reset it
+    expect($settings.deviceId).toBe('') // will be last saved but we reset it
   }}
 ></Story>
 
@@ -88,13 +87,11 @@
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
-    expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d: DeviceDef) => d.deviceId)
-    )
+    expectSelectOptions(devices, parameters.deviceDefs)
 
     expect(devices).toHaveValue(deviceId)
-    expect(devices).toBeDisabled()
     expect($settings.deviceId).toBe(deviceId)
+    expect(devices).toBeDisabled()
   }}
 ></Story>
 
@@ -112,9 +109,8 @@
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
-    expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d: DeviceDef) => d.deviceId)
-    )
+    expectSelectOptions(devices, parameters.deviceDefs)
+    expect(devices).toHaveValue(deviceId)
   }}
 ></Story>
 
@@ -129,20 +125,16 @@
       expect(args.ondeviceid).toHaveBeenCalledWith('unknown')
     })
 
-    function getOptionValues(optionEl: HTMLSelectElement) {
-      return [...optionEl.options].map((o) => o.value)
-    }
-
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
+    expect(getSelectValues(devices)).toEqual(['unknown', 'one'])
     expect(devices).toHaveValue('unknown')
     expect(devices).toBeEnabled()
-    expect(getOptionValues(devices as HTMLSelectElement)).toEqual(['unknown', 'one'])
   }}
 ></Story>
 
 <Story
-  name="Single device another saved id, user selected"
+  name="Single device another saved id, selected"
   parameters={{
     savedId: 'random',
     deviceDefs: [{ deviceId: 'one', label: 'Input Device' }]
@@ -156,10 +148,7 @@
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
 
     const newDeviceId = 'one'
-    await userEvent.selectOptions(
-      devices,
-      parameters.deviceDefs.find((d: DeviceDef) => d.deviceId === newDeviceId).label
-    )
+    await userEvent.selectOptions(devices, deviceDefLabel(parameters.deviceDefs, newDeviceId))
     expect(devices).toHaveValue(newDeviceId)
     expect(devices).toBeDisabled()
   }}
@@ -183,9 +172,7 @@
 
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
-    expect([...devices.options].map((o) => o.value)).toEqual(
-      parameters.deviceDefs.map((d: DeviceDef) => d.deviceId)
-    )
+    expectSelectOptions(devices, parameters.deviceDefs)
     expect(devices).toHaveValue(deviceId)
     expect(devices).toBeEnabled()
   }}
@@ -212,10 +199,7 @@
 
     const newDeviceId = 'three'
 
-    await userEvent.selectOptions(
-      devices,
-      parameters.deviceDefs.find((d: DeviceDef) => d.deviceId === newDeviceId).label
-    )
+    await userEvent.selectOptions(devices, deviceDefLabel(parameters.deviceDefs, newDeviceId))
     expect(devices).toHaveValue(newDeviceId)
     expect($settings.deviceId).toBe(newDeviceId)
     await waitFor(() => {
@@ -253,15 +237,10 @@
     const canvas = within(canvasElement)
     const devices = canvas.getByRole('combobox', { name: 'Input:' }) as HTMLSelectElement
 
-    expect([...devices.options].map((o) => o.value)).toEqual(
-      deviceDefs2.map((d: DeviceDef) => d.deviceId)
-    )
+    expectSelectOptions(devices, deviceDefs2)
 
     const newDeviceId = 'four'
-    await userEvent.selectOptions(
-      devices,
-      deviceDefs2.find((d: DeviceDef) => d.deviceId === newDeviceId).label
-    )
+    await userEvent.selectOptions(devices, deviceDefLabel(deviceDefs2, newDeviceId))
     expect(devices).toHaveValue(newDeviceId)
     await waitFor(() => {
       expect(args.ondeviceid).toHaveBeenNthCalledWith(3, newDeviceId)
