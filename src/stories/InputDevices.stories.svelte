@@ -2,7 +2,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf'
   import { within, waitFor, expect, fn, spyOn, userEvent } from '@storybook/test'
 
-  import { resetSettings, settings } from '@lib/persistentStore.js' // TODO: this is saving in host browser not chromium
+  import { settings } from '@lib/persistentStore.js' // TODO: this is saving in host browser not chromium
   import InputDevices from '@components/InputDevices.svelte'
 
   interface DeviceDef extends Omit<MediaDeviceInfo, 'kind' | 'groupId' | 'toJSON'> {}
@@ -35,9 +35,9 @@
       ondeviceid: fn()
     },
     async beforeEach(ctx) {
-      // Note also $settings doesn't work here so we would use settings.subscribe()
+      // Note also $ doesn't work with stores so use API directly
       const savedId = ctx.parameters.savedId
-      resetSettings(savedId ? { deviceId: savedId } : undefined)
+      settings.set({ deviceId: savedId ? savedId : '' })
 
       // spys need to be run in this function to work
       // vitest will destroy
