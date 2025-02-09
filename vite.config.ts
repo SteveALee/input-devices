@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import path from 'path';
+import path from 'path'
+import { coverageConfigDefaults} from 'vitest/config'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -13,4 +14,9 @@ export default defineConfig({
     }
   },
   plugins: [svelte()],
-	})
+  test: {
+    coverage: {
+      exclude: ['svelte.config.js', 'src/App.svelte', 'src/main.ts', ...coverageConfigDefaults.exclude]
+    },
+  }
+})

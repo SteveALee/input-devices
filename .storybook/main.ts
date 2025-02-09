@@ -8,7 +8,8 @@ const config: StorybookConfig = {
   addons: [
     "@storybook/addon-svelte-csf",
     "@storybook/addon-essentials",
-    "@storybook/experimental-addon-test"
+    "@storybook/experimental-addon-test",
+    "@storybook/addon-a11y"
   ],
   framework: {
     name: "@storybook/svelte-vite",
